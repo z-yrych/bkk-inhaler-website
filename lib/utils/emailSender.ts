@@ -1,6 +1,6 @@
 // lib/utils/emailSender.ts
-import nodemailer from "nodemailer";
-import { IOrder, OrderStatus } from "@/lib/models/Order"; // Import your IOrder and OrderStatusType interfaces
+import nodemailer from 'nodemailer';
+import { IOrder, OrderStatus } from '@/lib/models/Order'; // Import your IOrder and OrderStatus type
 
 interface MailOptions {
   to: string;
@@ -19,7 +19,6 @@ function formatCurrency(amountInCents: number): string {
 
 // --- HTML Email Template Generators ---
 
-// Base styling for emails
 const baseEmailStyle = `
   font-family: Arial, Helvetica, sans-serif; 
   line-height: 1.6; 
@@ -47,7 +46,6 @@ const footerStyle = `
   color: #7f8c8d;
 `;
 
-// 1. Order Confirmation (You already have this, ensure it uses base styles for consistency)
 function generateOrderConfirmationHTML(order: IOrder): string {
   const itemsHTML = order.orderItems
     .map(
@@ -70,11 +68,9 @@ function generateOrderConfirmationHTML(order: IOrder): string {
     )
     .join("");
   const shipping = order.customerDetails.shippingAddress;
-  const customerName =
-    order.customerDetails.fullName ||
-    `${order.customerDetails.firstName} ${order.customerDetails.lastName}`;
-  const cityField =
-    shipping.city || (shipping as any).cityMunicipality || "N/A";
+  // FIXED: Error 72:31 (was 77:35) - Construct fullName safely
+  const customerName = `${order.customerDetails.firstName || ''} ${order.customerDetails.lastName || ''}`.trim() || "Valued Customer";
+  const cityField = shipping.city || "N/A";
 
   return `
     <div style="${baseEmailStyle}">
@@ -82,7 +78,7 @@ function generateOrderConfirmationHTML(order: IOrder): string {
         <h1 style="${h1Style}">Thank You for Your Order!</h1>
       </header>
       <p style="${pStyle}">Hi ${customerName},</p>
-      <p style="${pStyle}">We're excited to let you know that your order #${
+      <p style="${pStyle}">We&apos;re excited to let you know that your order #${
     order.orderId
   } has been confirmed and is being processed.</p>
       <h2 style="${h2Style}">Order Summary</h2>
@@ -122,7 +118,7 @@ function generateOrderConfirmationHTML(order: IOrder): string {
       <p style="${pStyle}"><strong>Phone:</strong> ${
     order.customerDetails.phone || "N/A"
   }</p>
-      <p style="${pStyle}">We'll notify you once your order has shipped. If you have any questions, feel free to contact us at [Your Support Email Address] or reply to this email.</p>
+      <p style="${pStyle}">We&apos;ll notify you once your order has shipped. If you have any questions, feel free to contact us at [Your Support Email Address] or reply to this email.</p>
       <footer style="${footerStyle}">
         <p>Thank you for shopping with InhalerStore!</p>
         <p>[Your Website URL] | [Your Contact Number (Optional)]</p>
@@ -131,43 +127,41 @@ function generateOrderConfirmationHTML(order: IOrder): string {
   `;
 }
 
-// 2. Order Processing Template
 function generateOrderProcessingHTML(order: IOrder): string {
-  const customerName =
-    order.customerDetails.fullName ||
-    `${order.customerDetails.firstName} ${order.customerDetails.lastName}`;
+  // FIXED: Error 135:31 - Construct fullName safely
+  const customerName = `${order.customerDetails.firstName || ''} ${order.customerDetails.lastName || ''}`.trim() || "Valued Customer";
   return `
     <div style="${baseEmailStyle}">
       <header style="${headerStyle}"><h1 style="${h1Style}">Your Order is Being Processed!</h1></header>
       <p style="${pStyle}">Hi ${customerName},</p>
-      <p style="${pStyle}">Great news! We've started processing your order #${order.orderId}.</p>
-      <p style="${pStyle}">We're carefully preparing your items and will notify you as soon as it's shipped. You can expect your items to be dispatched within [X-Y business days/hours].</p>
+      <p style="${pStyle}">Great news! We&apos;ve started processing your order #${order.orderId}.</p>
+      <p style="${pStyle}">We&apos;re carefully preparing your items and will notify you as soon as it&apos;s shipped. You can expect your items to be dispatched within [X-Y business days/hours].</p>
       <p style="${pStyle}">You can view your order details here: [Link to Order Tracking or Account Page - if available]</p>
-      <p style="${pStyle}">If you have any questions, please don't hesitate to contact us.</p>
+      <p style="${pStyle}">If you have any questions, please don&apos;t hesitate to contact us.</p>
       <footer style="${footerStyle}"><p>Thanks for your patience,<br>The InhalerStore Team</p></footer>
     </div>
   `;
 }
 
-// 3. Order Shipped Template
 function generateOrderShippedHTML(
   order: IOrder,
   trackingNumber?: string,
   courier?: string
 ): string {
-  const customerName =
-    order.customerDetails.fullName ||
-    `${order.customerDetails.firstName} ${order.customerDetails.lastName}`;
-  let trackingInfoHTML = '<p style="${pStyle}">Your order is on its way!</p>';
+  // FIXED: Error 156:31 - Construct fullName safely
+  const customerName = `${order.customerDetails.firstName || ''} ${order.customerDetails.lastName || ''}`.trim() || "Valued Customer";
+  let trackingInfoHTML = `<p style="${pStyle}">Your order is on its way!</p>`; // Default message
   if (trackingNumber && courier) {
     trackingInfoHTML = `
       <p style="${pStyle}">Your order #${order.orderId} has been shipped via ${courier}!</p>
       <p style="${pStyle}">Your tracking number is: <strong>${trackingNumber}</strong></p>
-      <p style="${pStyle}">You can track your package here: [Link to Courier Tracking Page, potentially with trackingNumber appended, e.g., https://courier.example.com/track?id=${trackingNumber}]</p>
+      <p style="${pStyle}">You can track your package here: [Link to Courier Tracking Page, e.g., https://courier.example.com/track?id=${trackingNumber}]</p>
     `;
   } else if (courier) {
     trackingInfoHTML = `<p style="${pStyle}">Your order #${order.orderId} has been shipped via ${courier}!</p>`;
   }
+
+  const cityField = order.customerDetails.shippingAddress.city || "N/A"; // Already fixed
 
   return `
     <div style="${baseEmailStyle}">
@@ -178,10 +172,7 @@ function generateOrderShippedHTML(
       <h3 style="${h2Style}">Shipping To:</h3>
       <address style="margin: 5px 0; font-style: normal; white-space: pre-line;">
         ${order.customerDetails.shippingAddress.street}<br>
-        Brgy. ${order.customerDetails.shippingAddress.barangay}, ${
-    order.customerDetails.shippingAddress.city ||
-    (order.customerDetails.shippingAddress as any).cityMunicipality
-  }<br>
+        Brgy. ${order.customerDetails.shippingAddress.barangay}, ${cityField}<br>
         ${order.customerDetails.shippingAddress.province}, ${
     order.customerDetails.shippingAddress.postalCode
   }
@@ -191,11 +182,9 @@ function generateOrderShippedHTML(
   `;
 }
 
-// 4. Order Delivered Template
 function generateOrderDeliveredHTML(order: IOrder): string {
-  const customerName =
-    order.customerDetails.fullName ||
-    `${order.customerDetails.firstName} ${order.customerDetails.lastName}`;
+  // FIXED: Error 191:31 - Construct fullName safely
+  const customerName = `${order.customerDetails.firstName || ''} ${order.customerDetails.lastName || ''}`.trim() || "Valued Customer";
   return `
     <div style="${baseEmailStyle}">
       <header style="${headerStyle}"><h1 style="${h1Style}">Your Order Has Been Delivered!</h1></header>
@@ -208,14 +197,12 @@ function generateOrderDeliveredHTML(order: IOrder): string {
   `;
 }
 
-// 5. Order Cancelled by Admin Template
 function generateOrderCancelledByAdminHTML(
   order: IOrder,
   cancellationReason?: string
 ): string {
-  const customerName =
-    order.customerDetails.fullName ||
-    `${order.customerDetails.firstName} ${order.customerDetails.lastName}`;
+  // FIXED: Error 210:31 - Construct fullName safely
+  const customerName = `${order.customerDetails.firstName || ''} ${order.customerDetails.lastName || ''}`.trim() || "Valued Customer";
   let reasonHTML = "";
   if (cancellationReason) {
     reasonHTML = `<p style="${pStyle}"><strong>Reason for cancellation:</strong> ${cancellationReason}</p>`;
@@ -224,7 +211,7 @@ function generateOrderCancelledByAdminHTML(
     <div style="${baseEmailStyle}">
       <header style="${headerStyle}"><h1 style="color: #dc3545; margin:0; font-size: 24px;">Order #${order.orderId} Cancelled</h1></header>
       <p style="${pStyle}">Hi ${customerName},</p>
-      <p style="${pStyle}">We're writing to inform you that your order #${order.orderId} has been cancelled by our team.</p>
+      <p style="${pStyle}">We&apos;re writing to inform you that your order #${order.orderId} has been cancelled by our team.</p>
       ${reasonHTML}
       <p style="${pStyle}">A full refund (if payment was processed) has been initiated and should reflect in your account within [X-Y business days, depending on payment method].</p>
       <p style="${pStyle}">We apologize for any inconvenience this may cause. If you have any questions or would like to place a new order, please contact our support team at [Your Support Email Address].</p>
@@ -233,7 +220,6 @@ function generateOrderCancelledByAdminHTML(
   `;
 }
 
-// --- Transporter and Sending Logic (mostly same as before) ---
 async function getTransporter() {
   if (process.env.NODE_ENV === "production") {
     if (
@@ -279,6 +265,9 @@ async function getTransporter() {
         });
       } catch (etherealError) {
         console.error("Failed to create Ethereal test account:", etherealError);
+        if (etherealError instanceof Error) {
+            throw new Error(`Failed to set up email transporter for development (Ethereal): ${etherealError.message}`);
+        }
         throw new Error(
           "Failed to set up email transporter for development (Ethereal)."
         );
@@ -300,7 +289,7 @@ export async function sendEmail(
   try {
     const transporter = await getTransporter();
     const info = await transporter.sendMail({
-      from: process.env.EMAIL_FROM || '"InhalerStore" <noreply@yourdomain.com>', // Update your default from
+      from: process.env.EMAIL_FROM || '"InhalerStore" <noreply@yourdomain.com>',
       ...options,
     });
     const previewUrl = nodemailer.getTestMessageUrl(info);
@@ -315,7 +304,8 @@ export async function sendEmail(
         "Email sent, no preview URL/messageId. Response:",
         info.response
       );
-      return info.response || true.toString();
+      // Ensure a string or specific falsy value is returned for consistency
+      return typeof info.response === 'string' ? info.response : null; 
     }
   } catch (error) {
     console.error("Error in sendEmail function:", error);
@@ -323,7 +313,6 @@ export async function sendEmail(
   }
 }
 
-// --- Wrapper functions for specific email types ---
 export async function sendOrderConfirmationEmail(
   order: IOrder
 ): Promise<boolean> {
@@ -346,11 +335,10 @@ export async function sendOrderConfirmationEmail(
   return !!result;
 }
 
-// New function to handle various status update notifications
 export async function sendOrderStatusUpdateNotification(
   order: IOrder,
-  newStatus: OrderStatus, // Use your OrderStatusType
-  adminProvidedNote?: string // Optional note from admin, could be cancellation reason or tracking info
+  newStatus: OrderStatus,
+  adminProvidedNote?: string
 ): Promise<boolean> {
   if (!order.customerDetails.email) {
     console.error(
@@ -368,15 +356,14 @@ export async function sendOrderStatusUpdateNotification(
       htmlContent = generateOrderProcessingHTML(order);
       break;
     case "SHIPPED_LOCAL":
-      // For shipped, you might extract tracking from order.shippingInfo or pass it via adminProvidedNote
       const trackingNumber =
         order.shippingInfo?.trackingNumber ||
-        (adminProvidedNote?.includes("Tracking")
-          ? adminProvidedNote
+        (adminProvidedNote?.toLowerCase().includes("tracking")
+          ? adminProvidedNote // This might be too broad, consider a more structured way to pass tracking
           : undefined);
       const courier =
         order.shippingInfo?.courier ||
-        (adminProvidedNote?.includes("via") ? adminProvidedNote : undefined);
+        (adminProvidedNote?.toLowerCase().includes("via") ? adminProvidedNote : undefined); // Same as above
       subject = `Your InhalerStore Order #${order.orderId} Has Shipped!`;
       htmlContent = generateOrderShippedHTML(order, trackingNumber, courier);
       break;
@@ -386,15 +373,15 @@ export async function sendOrderStatusUpdateNotification(
       break;
     case "CANCELLED_BY_ADMIN":
       subject = `Important Update: Your InhalerStore Order #${order.orderId} Has Been Cancelled`;
-      htmlContent = generateOrderCancelledByAdminHTML(order, adminProvidedNote); // Pass adminNote as potential reason
+      htmlContent = generateOrderCancelledByAdminHTML(order, adminProvidedNote);
       break;
-    // Add cases for other statuses if needed (e.g., PAYMENT_FAILED, REFUNDED)
-    // default:
-    //   console.log(`No specific email template for order status: ${newStatus}. Not sending email.`);
-    //   return true; // Or false if you consider it a failure not to have a template
+    // Default case for unhandled statuses or statuses that don't need an email
+    default:
+      console.log(`No email notification configured for status: ${newStatus} for order ${order.orderId}.`);
+      return true; // Considered success as no email needed to be sent
   }
 
-  if (subject && htmlContent) {
+  if (subject && htmlContent) { // Ensure subject and content were set
     console.log(
       `Attempting to send status update email (${newStatus}) to ${order.customerDetails.email} for order ${order.orderId}...`
     );
@@ -405,9 +392,8 @@ export async function sendOrderStatusUpdateNotification(
     });
     return !!result;
   } else {
-    console.log(
-      `No email notification configured for status: ${newStatus} for order ${order.orderId}.`
-    );
-    return true; // Not an error, just no email to send for this status
+    // This case might be hit if a status is passed that's not in the switch but is valid
+    console.log(`Email subject or content not generated for status: ${newStatus} on order ${order.orderId}.`);
+    return true; // Still considered "success" as no email was intended for this path
   }
 }

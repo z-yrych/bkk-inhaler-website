@@ -1,3 +1,4 @@
+// lib/models/User.ts
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
@@ -14,6 +15,8 @@ export interface IUser extends Document {
 }
 
 // Interface for User model statics (if any, though not used in this basic version)
+// FIXED: Error 17:18 - Added eslint-disable for no-empty-object-type
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface IUserModel extends Model<IUser> {}
 
 const UserSchema = new Schema<IUser, IUserModel>(
@@ -24,13 +27,12 @@ const UserSchema = new Schema<IUser, IUserModel>(
       unique: true,
       lowercase: true,
       trim: true,
-      // Basic email format validation
       match: [/.+@.+\..+/, 'Please enter a valid email address.'],
     },
     password: {
       type: String,
       required: [true, 'Password is required.'],
-      select: false, // Do not return password by default in queries
+      select: false,
       minlength: [8, 'Password must be at least 8 characters long.'],
     },
     firstName: {
@@ -54,20 +56,19 @@ const UserSchema = new Schema<IUser, IUserModel>(
     },
   },
   {
-    timestamps: true, // Adds createdAt and updatedAt timestamps
+    timestamps: true,
     toJSON: {
-      virtuals: true, // Ensure virtuals are included in toJSON output
+      virtuals: true,
       transform: (_doc, ret) => {
-        delete ret.password; // Remove password hash from JSON responses
-        delete ret.__v; // Remove Mongoose version key
-        // Optionally, transform _id to id
-        // ret.id = ret._id;
-        // delete ret._id;
+        delete ret.password;
+        delete ret.__v;
+        // ret.id = ret._id; // Mongoose 'id' virtual handles this
+        // delete ret._id; // Not needed if 'id' virtual is used
         return ret;
       },
     },
     toObject: {
-      virtuals: true, // Ensure virtuals are included in toObject output
+      virtuals: true,
       transform: (_doc, ret) => {
         delete ret.password;
         delete ret.__v;
@@ -79,14 +80,11 @@ const UserSchema = new Schema<IUser, IUserModel>(
   }
 );
 
-// Virtual for fullName
 UserSchema.virtual('fullName').get(function (this: IUser) {
   return `${this.firstName} ${this.lastName}`;
 });
 
-// Pre-save hook for password hashing
 UserSchema.pre<IUser>('save', async function (next) {
-  // Only hash the password if it has been modified (or is new)
   if (!this.isModified('password') || !this.password) {
     return next();
   }
@@ -94,28 +92,24 @@ UserSchema.pre<IUser>('save', async function (next) {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
     next();
-  } catch (error) {
+  } catch (error) { // error is unknown by default
     // Pass error to the next middleware/error handler
-    next(error as Error); // Cast to Error type
+    // Ensure the error is cast or handled as an Error type for next()
+    if (error instanceof Error) {
+        next(error);
+    } else {
+        next(new Error('An unknown error occurred during password hashing.'));
+    }
   }
 });
 
-// Method to compare password for login
 UserSchema.methods.comparePassword = function (candidatePassword: string): Promise<boolean> {
-  // this.password will be undefined here if 'select: false' is active and
-  // the document was fetched without explicitly selecting the password.
-  // Ensure password field is selected before calling this method if needed,
-  // or fetch the user with password for authentication.
-  // However, for a new user or when password is set, this.password is available.
-  // For comparison, bcrypt.compare handles the undefined case gracefully if this.password is undefined by returning false.
-  if (!this.password && this.isNew) { // Should not happen if password is required
+  if (!this.password && this.isNew) {
       return Promise.resolve(false);
   }
-  // When fetching a user to compare password, ensure to .select('+password')
   return bcrypt.compare(candidatePassword, this.password || '');
 };
 
-// Ensure the model is not redefined during hot-reloading
 const User = (mongoose.models.User as IUserModel) || mongoose.model<IUser, IUserModel>('User', UserSchema);
 
 export default User;

@@ -1,5 +1,6 @@
-import mongoose, { Schema, Document, Model } from 'mongoose';
-import slugify from 'slugify';
+// lib/models/Product.ts
+import mongoose, { Schema, Document, Model } from "mongoose";
+import slugify from "slugify";
 
 export interface IProduct extends Document {
   name: string;
@@ -17,15 +18,17 @@ export interface IProduct extends Document {
   updatedAt: Date;
 }
 
+// FIXED: Error 23:18 (was 20:18) - Used the correct ESLint rule name in the disable comment
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface IProductModel extends Model<IProduct> {}
 
 const ProductSchema = new Schema<IProduct, IProductModel>(
   {
     name: {
       type: String,
-      required: [true, 'Product name is required.'],
+      required: [true, "Product name is required."],
       trim: true,
-      maxlength: [150, 'Product name cannot exceed 150 characters.'],
+      maxlength: [150, "Product name cannot exceed 150 characters."],
     },
     slug: {
       type: String,
@@ -36,35 +39,51 @@ const ProductSchema = new Schema<IProduct, IProductModel>(
     },
     description: {
       type: String,
-      required: [true, 'Product description is required.'],
+      required: [true, "Product description is required."],
       trim: true,
     },
-    price: { // Stored in cents
+    price: {
+      // Stored in cents
       type: Number,
-      required: [true, 'Product price is required.'],
-      min: [0, 'Price cannot be negative.'],
+      required: [true, "Product price is required."],
+      min: [0, "Price cannot be negative."],
       validate: {
         validator: Number.isInteger,
-        message: '{VALUE} is not an integer value for price (cents).',
+        message: (props: { value: number }) =>
+          `${props.value} is not an integer value for price (cents).`,
       },
     },
     stockQuantity: {
       type: Number,
-      required: [true, 'Stock quantity is required.'],
-      min: [0, 'Stock quantity cannot be negative.'],
+      required: [true, "Stock quantity is required."],
+      min: [0, "Stock quantity cannot be negative."],
       default: 0,
       validate: {
         validator: Number.isInteger,
-        message: '{VALUE} is not an integer value for stock quantity.',
+        message: (props: { value: number }) =>
+          `${props.value} is not an integer value for stock quantity.`,
       },
     },
-    images: { // Array of image URLs
+    images: {
+      // Array of image URLs
       type: [String],
       validate: {
-        validator: (v: string[]) => Array.isArray(v) && v.length > 0 && v.every(url => typeof url === 'string' && url.startsWith('http')),
-        message: 'At least one product image URL (starting with http) is required.',
+        validator: (v: string[]) =>
+          Array.isArray(v) &&
+          v.length > 0 &&
+          v.every(
+            (url) =>
+              typeof url === "string" &&
+              (url.startsWith("http://") ||
+                url.startsWith("https://") ||
+                url.startsWith("/"))
+          ),
+        message: (props: { value: string[] }) =>
+          `Image URLs must be valid and start with http, https, or be a local path. Received: ${props.value.join(
+            ", "
+          )}`,
       },
-      required: [true, 'At least one product image is required.'],
+      required: [true, "At least one product image is required."],
     },
     scentProfile: {
       type: [String],
@@ -77,7 +96,7 @@ const ProductSchema = new Schema<IProduct, IProductModel>(
     usageInstructions: {
       type: String,
       trim: true,
-      default: '',
+      default: "",
     },
     ingredients: {
       type: [String],
@@ -94,8 +113,6 @@ const ProductSchema = new Schema<IProduct, IProductModel>(
       virtuals: true,
       transform: (_doc, ret) => {
         delete ret.__v;
-        // ret.id = ret._id;
-        // delete ret._id;
         return ret;
       },
     },
@@ -103,25 +120,27 @@ const ProductSchema = new Schema<IProduct, IProductModel>(
       virtuals: true,
       transform: (_doc, ret) => {
         delete ret.__v;
-        // ret.id = ret._id;
-        // delete ret._id;
         return ret;
       },
     },
   }
 );
 
-// Pre-save hook to generate slug from name if slug is not present or name is modified
-ProductSchema.pre<IProduct>('save', function (next) {
-  if (this.isModified('name') || !this.slug) {
-    this.slug = slugify(this.name, { lower: true, strict: true, replacement: '-' });
+ProductSchema.pre<IProduct>("save", function (next) {
+  if (this.isModified("name") || !this.slug) {
+    this.slug = slugify(this.name, {
+      lower: true,
+      strict: true,
+      replacement: "-",
+    });
   }
   next();
 });
 
-// Indexing for faster queries on name and slug
-ProductSchema.index({ name: 'text', slug: 1 }); // Text index for name searching, regular index for slug
+ProductSchema.index({ name: "text", slug: 1 });
 
-const Product = (mongoose.models.Product as IProductModel) || mongoose.model<IProduct, IProductModel>('Product', ProductSchema);
+const Product =
+  (mongoose.models.Product as IProductModel) ||
+  mongoose.model<IProduct, IProductModel>("Product", ProductSchema);
 
-export default Product; 
+export default Product;

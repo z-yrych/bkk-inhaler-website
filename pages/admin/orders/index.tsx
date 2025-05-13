@@ -12,13 +12,20 @@ import {
 } from "@/types/OrderTypes"; // Adjust path if needed
 
 // Define a type for the API response structure for orders list
+interface ApiErrorDetail {
+  message: string;
+  path?: (string | number)[];
+  // Add other potential error properties if your API returns them
+}
+
+// Define a type for the API response structure for orders list
 interface OrdersApiResponse {
   message?: string;
   orders: IOrderData[];
   currentPage: number;
   totalPages: number;
   totalOrders: number;
-  errors?: any[];
+  errors?: ApiErrorDetail[]; // FIXED: More specific type for errors array
 }
 
 // This component contains the actual content of the orders page
@@ -77,9 +84,12 @@ const AdminOrdersContent: React.FC<AdminAuthProps> = ({ adminUser }) => {
 
         const data: OrdersApiResponse = await res.json();
         if (!res.ok) {
-          throw new Error(
-            data.message || `Failed to fetch orders: ${res.statusText}`
-          );
+          const errorMsg =
+            data.message ||
+            (data.errors
+              ? data.errors.map((e: ApiErrorDetail) => e.message).join(", ") // FIXED: Typed 'e'
+              : `Failed to fetch orders: ${res.statusText}`);
+          throw new Error(errorMsg);
         }
 
         if (data.orders) {
@@ -94,23 +104,35 @@ const AdminOrdersContent: React.FC<AdminAuthProps> = ({ adminUser }) => {
           );
           setTotalOrders(data.totalOrders || 0);
         } else if (data.errors) {
-          console.error("Query parameter validation error:", data.errors);
+          console.error(
+            "Query parameter validation error from API:",
+            data.errors
+          );
           setError(
             `Invalid query parameters: ${data.errors
-              .map((e: any) => `${e.path.join(".")}: ${e.message}`)
+              .map(
+                (e: ApiErrorDetail) =>
+                  `${e.path?.join(".") || "general"}: ${e.message}`
+              ) // FIXED: Typed 'e'
               .join(", ")}`
           );
           setOrders([]);
         }
-      } catch (err: any) {
-        setError(err.message);
-        setOrders([]);
+      } catch (err) {
+        // FIXED: Changed from err: any
+        console.error("Error in fetchOrders:", err);
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError("An unexpected error occurred while fetching orders.");
+        }
+        setOrders([]); // Clear orders on error
       } finally {
         setIsLoading(false);
       }
     },
     []
-  ); // Empty dependency array as all params are passed in
+  );
 
   useEffect(() => {
     if (adminUser && router.isReady) {

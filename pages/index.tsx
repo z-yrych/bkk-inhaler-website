@@ -92,9 +92,7 @@ interface HomePageProps {
 
 const HomePage: NextPage<HomePageProps> = ({ featuredProducts, error }) => {
   if (error) {
-    // Handle error fetching products, e.g., show a message
-    console.error("Error loading featured products:", error);
-    // You might want a more user-friendly error display
+    console.error("Error loading featured products on homepage:", error);
   }
 
   return (
@@ -111,7 +109,7 @@ const HomePage: NextPage<HomePageProps> = ({ featuredProducts, error }) => {
       {/* Hero Section */}
       <section
         className="relative py-20 sm:py-32 lg:py-40 bg-cover bg-center"
-        style={{ backgroundImage: "url('/1.jpg')" }} // Ensure /1.jpg is in your public folder
+        style={{ backgroundImage: "url('/1.jpg')" }}
       >
         <div className="absolute inset-0 bg-black opacity-40"></div>
         <div className="container mx-auto px-6 text-center relative z-10">
@@ -130,15 +128,16 @@ const HomePage: NextPage<HomePageProps> = ({ featuredProducts, error }) => {
         </div>
       </section>
 
-      {/* Benefits Section (remains the same) */}
+      {/* Benefits Section */}
       <section className="py-16 sm:py-20 bg-white">
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-gray-800 mb-4">
             Experience the Difference
           </h2>
+          {/* FIXED: Error at 140:67 - Unescaped apostrophe */}
           <p className="text-lg text-gray-600 mb-12 max-w-2xl mx-auto">
-            Our inhalers are more than just a pleasant scent; they're a tool for
-            enhancing your well-being, naturally.
+            Our inhalers are more than just a pleasant scent; they&apos;re a
+            tool for enhancing your well-being, naturally.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">
             {benefits.map((benefit, index) => (
@@ -161,7 +160,7 @@ const HomePage: NextPage<HomePageProps> = ({ featuredProducts, error }) => {
         </div>
       </section>
 
-      {/* Featured Products Section - Now uses fetched data */}
+      {/* Featured Products Section */}
       <section className="py-16 sm:py-20 bg-gray-50">
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-gray-800 mb-4">
@@ -172,21 +171,21 @@ const HomePage: NextPage<HomePageProps> = ({ featuredProducts, error }) => {
           </p>
           {error && (
             <p className="text-red-500">
-              Could not load featured products at this time.
+              Could not load featured products at this time. Error: {error}
             </p>
           )}
           {!error && featuredProducts && featuredProducts.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
               {featuredProducts.map((product) => (
                 <div
-                  key={product._id} // Use product._id from fetched data
+                  key={product._id}
                   className="bg-white border border-gray-200 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 ease-in-out flex flex-col overflow-hidden group text-left"
                 >
                   <Link href={`/products/${product.slug}`} legacyBehavior>
                     <a className="block">
                       <div className="w-full h-64 overflow-hidden">
                         <Image
-                          src={product.images[0] || "/placeholder-image.jpg"} // Ensure product.images exists
+                          src={product.images[0] || "/placeholder-image.jpg"}
                           alt={product.name}
                           width={400}
                           height={300}
@@ -200,7 +199,6 @@ const HomePage: NextPage<HomePageProps> = ({ featuredProducts, error }) => {
                         <p className="text-md font-bold text-emerald-500 my-2">
                           {formatCurrency(product.price)}
                         </p>
-                        {/* Use full description or a specific shortDescription field if available */}
                         <p className="text-sm text-gray-600 mb-4 leading-relaxed flex-grow">
                           {product.description.substring(0, 120) +
                             (product.description.length > 120 ? "..." : "")}
@@ -233,9 +231,8 @@ const HomePage: NextPage<HomePageProps> = ({ featuredProducts, error }) => {
         </div>
       </section>
 
-      {/* Call to Action / About Snippet (remains the same) */}
+      {/* Call to Action / About Snippet */}
       <section className="py-16 sm:py-20 bg-teal-600 text-white">
-        {/* ... your existing CTA content ... */}
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold mb-6">
             Ready to Elevate Your Senses?
@@ -254,28 +251,20 @@ const HomePage: NextPage<HomePageProps> = ({ featuredProducts, error }) => {
           </div>
         </div>
       </section>
-      {/* Footer is assumed to be global from _app.tsx or can be added here */}
     </div>
   );
 };
 
 // Fetch featured products server-side
 export const getServerSideProps: GetServerSideProps<HomePageProps> = async (
-  context
 ) => {
   try {
-    // Construct the full URL to your API endpoint
-    // In development, process.env.NEXT_PUBLIC_APP_URL might be http://localhost:3000
-    // In production, it should be your actual domain.
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-
-    // Fetch a few active products, e.g., 3 most recent or based on a "featured" flag if you add one
     const res = await fetch(
       `${appUrl}/api/products?limit=3&sortBy=createdAt&sortOrder=desc`
     );
 
     if (!res.ok) {
-      // You could log the error status here: console.error(`API error: ${res.status}`);
       return {
         props: {
           featuredProducts: [],
@@ -284,7 +273,13 @@ export const getServerSideProps: GetServerSideProps<HomePageProps> = async (
       };
     }
 
-    const data = await res.json(); // Assuming your API returns { products: IProductData[], ... }
+    // Define a type for the expected API response data
+    interface ApiProductsResponse {
+      products: IProductData[];
+      // include other fields like currentPage, totalPages if your API sends them
+      message?: string;
+    }
+    const data: ApiProductsResponse = await res.json();
 
     if (!data.products) {
       return {
@@ -300,12 +295,23 @@ export const getServerSideProps: GetServerSideProps<HomePageProps> = async (
         featuredProducts: data.products,
       },
     };
-  } catch (error: any) {
+  } catch (error) {
+    // FIXED: Error at 303:19 - Typed error
     console.error("Error in getServerSideProps for homepage:", error);
+    if (error instanceof Error) {
+      return {
+        props: {
+          featuredProducts: [],
+          error:
+            error.message ||
+            "Could not fetch featured products. Please try again later.",
+        },
+      };
+    }
     return {
       props: {
         featuredProducts: [],
-        error: "Could not fetch featured products. Please try again later.",
+        error: "An unknown error occurred while fetching featured products.",
       },
     };
   }

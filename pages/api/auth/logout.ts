@@ -1,6 +1,5 @@
 // pages/api/auth/logout.ts
 import { NextApiRequest, NextApiResponse } from 'next';
-import { withAdminAuth } from '@/lib/middleware/authMiddleware'; // Optional: protect if you want to ensure only logged-in users can "logout"
 
 async function logoutHandler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {

@@ -2,20 +2,26 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { ZodError } from "zod";
 import axios from "axios";
-import mongoose from "mongoose"; // For mongoose.Types.ObjectId
+import mongoose from "mongoose";
 import dbConnect from "@/lib/dbConnect";
 import Product, { IProduct } from "@/lib/models/Product";
 import Order, {
-  // IOrder, // savedOrder will be of type IOrder
   OrderCreationAttributes,
   IOrderItemData,
-  OrderStatus, // Assuming OrderStatus is exported: export type OrderStatus = (typeof OrderStatusEnum)[number];
+  OrderStatus,
+  IOrder, // Import IOrder for typing savedOrderForErrorHandling
 } from "@/lib/models/Order";
-import {
-  CreateOrderSchema,
-  CreateOrderInput,
-} from "@/lib/validators/orderValidators";
+import { CreateOrderSchema } from "@/lib/validators/orderValidators";
 import { generateOrderId } from "@/lib/utils/orderIdHelper";
+
+// Define a type for the expected structure of PayMongo API errors
+interface PayMongoApiError {
+  errors: Array<{
+    code?: string;
+    detail?: string;
+    source?: { pointer: string; attribute: string };
+  }>;
+}
 
 export default async function handler(
   req: NextApiRequest,
@@ -28,10 +34,13 @@ export default async function handler(
       .json({ message: `Method ${req.method} Not Allowed` });
   }
 
+  // FIXED: Error at 43:35 - Typed savedOrderForErrorHandling
+  let savedOrderForErrorHandling: IOrder | null = null;
+
   try {
     await dbConnect();
 
-    const validatedData = CreateOrderSchema.parse(req.body as CreateOrderInput);
+    const validatedData = CreateOrderSchema.parse(req.body);
     const {
       fullName,
       email,
@@ -104,7 +113,7 @@ export default async function handler(
         shippingAddress: {
           street: shippingAddress.street,
           barangay: shippingAddress.barangay,
-          city: shippingAddress.cityMunicipality, // Maps Zod's cityMunicipality to Mongoose schema's 'city'
+          city: shippingAddress.cityMunicipality,
           province: shippingAddress.province,
           postalCode: shippingAddress.postalCode,
           country: "Philippines",
@@ -112,11 +121,12 @@ export default async function handler(
       },
       orderItems: processedOrderItems,
       totalAmount: calculatedTotalAmount,
-      orderStatus: "PENDING_PAYMENT" as OrderStatus, // Explicitly type if using string literal for enum
-      paymentDetails: {}, // Initial empty payment details
+      orderStatus: "PENDING_PAYMENT" as OrderStatus,
+      paymentDetails: {},
     };
 
     const savedOrder = await new Order(newOrderData).save();
+    savedOrderForErrorHandling = savedOrder;
 
     const paymongoSecretKey = process.env.PAYMONGO_SECRET_KEY;
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -133,7 +143,7 @@ export default async function handler(
 
     const paymongoLineItems = processedOrderItems.map((item) => ({
       currency: "PHP",
-      amount: item.priceAtPurchase * item.quantity,
+      amount: item.priceAtPurchase, // UNIT PRICE in cents
       name: item.name,
       quantity: item.quantity,
     }));
@@ -160,7 +170,7 @@ export default async function handler(
             "dob",
             "billease",
             "atome",
-          ], // Customize as per your PayMongo setup
+          ],
           payment_method_options: {
             card: { request_three_d_secure: "automatic" },
           },
@@ -169,7 +179,7 @@ export default async function handler(
           show_description: true,
           show_line_items: true,
           description: `Payment for Order #${savedOrder.orderId}`,
-          statement_descriptor: "YourStoreName", // Max 22 Chars for some card processors
+          statement_descriptor: "YourStoreName",
           success_url: `${appUrl}/checkout/success?order_id_internal=${savedOrder.id}`,
           cancel_url: `${appUrl}/checkout/cancel?order_id_internal=${savedOrder.id}`,
           metadata: {
@@ -203,17 +213,20 @@ export default async function handler(
       );
 
       checkoutUrl = paymongoResponse.data?.data?.attributes?.checkout_url;
-      paymongoCheckoutId = paymongoResponse.data?.data?.id; // cs_xxx
+      paymongoCheckoutId = paymongoResponse.data?.data?.id;
 
       const paymentIntentObject =
         paymongoResponse.data?.data?.attributes?.payment_intent;
       if (typeof paymentIntentObject === "string") {
-        paymentIntentIdFromCheckoutResponse = paymentIntentObject; // pi_xxx
+        paymentIntentIdFromCheckoutResponse = paymentIntentObject;
       } else if (
         typeof paymentIntentObject === "object" &&
-        paymentIntentObject !== null
+        paymentIntentObject !== null &&
+        "id" in paymentIntentObject
       ) {
-        paymentIntentIdFromCheckoutResponse = paymentIntentObject.id; // pi_xxx
+        paymentIntentIdFromCheckoutResponse = (
+          paymentIntentObject as { id: string }
+        ).id;
       }
 
       if (!checkoutUrl || !paymongoCheckoutId) {
@@ -221,17 +234,15 @@ export default async function handler(
           "Failed to retrieve checkout_url or checkout_id from PayMongo response:",
           paymongoResponse.data
         );
-        // Order already saved, user can retry payment or contact support.
-        // Not throwing an error here, but logging it. The calling client will get the 502 from below.
-        // We will return the 502 outside this block if these are not found.
+        throw new Error(
+          "PayMongo checkout session creation did not return expected URLs or IDs."
+        );
       }
 
-      // Update the order with PayMongo details
-      // Ensure paymentDetails is initialized if it could be undefined
       savedOrder.paymentDetails = savedOrder.paymentDetails || {};
       savedOrder.paymentDetails.paymongoCheckoutId = paymongoCheckoutId;
       savedOrder.paymentDetails.paymongoPaymentIntentId =
-        paymentIntentIdFromCheckoutResponse; // Store Payment Intent ID
+        paymentIntentIdFromCheckoutResponse;
       savedOrder.paymentDetails.status = "awaiting_payment_gateway";
 
       await savedOrder.save();
@@ -241,12 +252,9 @@ export default async function handler(
       );
 
       if (!checkoutUrl) {
-        // If checkoutUrl is still missing after trying to parse
         console.error(
           "Critical: Checkout URL missing from PayMongo response after attempting to save order details."
         );
-        // This indicates a problem with PayMongo's response or our parsing of it.
-        // The order exists but we can't redirect the user.
         return res.status(502).json({
           message:
             "Payment session created but checkout URL was not provided by gateway.",
@@ -254,23 +262,55 @@ export default async function handler(
           internalOrderId: savedOrder.id,
         });
       }
-    } catch (paymongoError: any) {
-      const orderIdentifier = savedOrder
-        ? savedOrder.orderId || savedOrder.id
+    } catch (paymongoError) {
+      const orderIdentifier = savedOrderForErrorHandling
+        ? savedOrderForErrorHandling.orderId || savedOrderForErrorHandling.id
         : "N/A";
-      const internalOrderIdentifier = savedOrder ? savedOrder.id : "N/A";
-      console.error(
-        `PayMongo API Error during checkout session creation for Order ${orderIdentifier}:`,
-        paymongoError.response?.data || paymongoError.message
-      );
+      const internalOrderIdentifier = savedOrderForErrorHandling
+        ? savedOrderForErrorHandling.id
+        : "N/A";
+
+      let errorMessage = "Payment gateway communication error.";
+      if (axios.isAxiosError(paymongoError) && paymongoError.response) {
+        const paymongoApiError = paymongoError.response
+          .data as PayMongoApiError;
+        errorMessage =
+          paymongoApiError.errors?.[0]?.detail || paymongoError.message;
+        console.error(
+          `PayMongo API Error for Order ${orderIdentifier} (Status: ${paymongoError.response.status}):`,
+          paymongoApiError.errors
+        );
+      } else if (paymongoError instanceof Error) {
+        errorMessage = paymongoError.message;
+        console.error(
+          `PayMongo API Error (Non-Axios or Network) for Order ${orderIdentifier}:`,
+          paymongoError
+        );
+      } else {
+        console.error(
+          `Unknown PayMongo API Error for Order ${orderIdentifier}:`,
+          paymongoError
+        );
+      }
+
       return res.status(502).json({
         message:
           "Could not initiate payment with payment gateway. Please try again later or contact support.",
-        error:
-          paymongoError.response?.data?.errors?.[0]?.detail ||
-          "Payment gateway communication error.",
+        error: errorMessage,
         orderId: orderIdentifier,
         internalOrderId: internalOrderIdentifier,
+      });
+    }
+
+    // Ensure checkoutUrl is defined before sending it in the response
+    if (!checkoutUrl) {
+      console.error(
+        "Critical: Checkout URL is undefined before sending final response."
+      );
+      return res.status(502).json({
+        message: "Failed to obtain checkout URL from payment gateway.",
+        orderId: savedOrder.orderId,
+        internalOrderId: savedOrder.id,
       });
     }
 
@@ -289,11 +329,13 @@ export default async function handler(
         .json({ message: "Validation error.", errors: error.errors });
     }
     console.error("Create Order General Error:", error);
-    if (error instanceof Error && (error as any).isCustomError) {
-      return res.status(400).json({ message: error.message });
+    if (error instanceof Error) {
+      return res.status(500).json({
+        message: error.message || "Internal Server Error creating order.",
+      });
     }
-    return res
-      .status(500)
-      .json({ message: "Internal Server Error creating order." });
+    return res.status(500).json({
+      message: "An unexpected Internal Server Error occurred creating order.",
+    });
   }
 }

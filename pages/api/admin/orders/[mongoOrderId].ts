@@ -3,7 +3,7 @@ import { NextApiResponse } from "next";
 import { ZodError } from "zod";
 import mongoose from "mongoose";
 import dbConnect from "@/lib/dbConnect";
-import Order, { IOrder, OrderStatus } from "@/lib/models/Order"; // Ensure OrderStatusType is exported
+import Order, { OrderStatus } from "@/lib/models/Order"; // Ensure OrderStatusType is exported
 import {
   withAdminAuth,
   NextApiRequestWithAdmin,

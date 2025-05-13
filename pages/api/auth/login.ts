@@ -75,7 +75,7 @@ export default async function handler(
       // which is a valid format for the 'ms' library used by jsonwebtoken.
       // We use 'as any' to satisfy TypeScript's strictness for ms.StringValue
       // when our variable is typed as a generic 'string'.
-      expiresIn: JWT_EXPIRES_IN_STRING as any,
+      expiresIn: JWT_EXPIRES_IN_STRING as import("ms").StringValue,
     };
 
     const token = jwt.sign(tokenPayload, currentJwtSecret, signOptions);

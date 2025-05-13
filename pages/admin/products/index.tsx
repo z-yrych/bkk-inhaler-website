@@ -1,5 +1,5 @@
 // pages/admin/products/index.tsx
-import React, { useState, useEffect, useCallback, FormEvent } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
@@ -12,7 +12,6 @@ import {
   ToggleLeft,
   ToggleRight,
   AlertTriangle,
-  Search,
   RefreshCw,
   ShoppingBag,
 } from "lucide-react"; // Icons
@@ -78,9 +77,14 @@ const AdminProductsContent: React.FC<AdminAuthProps> = ({ adminUser }) => {
         data.totalPages > 0 ? data.totalPages : data.totalProducts === 0 ? 0 : 1
       );
       setTotalProducts(data.totalProducts || 0);
-    } catch (err: any) {
+    } catch (err) {
+      // FIXED: Error at 81:19 - Typed err
       console.error("Error in fetchProducts:", err);
-      setError(err.message);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("An unexpected error occurred while fetching products.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -147,10 +151,15 @@ const AdminProductsContent: React.FC<AdminAuthProps> = ({ adminUser }) => {
           result.product.isActive ? "Active" : "Inactive"
         }.`
       );
-      fetchProducts(currentPage, limit); // Refresh the current page
-    } catch (err: any) {
+      fetchProducts(currentPage, limit);
+    } catch (err) {
+      // FIXED: Error at 151:19 - Typed err
       console.error("Error toggling product active status:", err);
-      alert(`Error: ${err.message}`);
+      if (err instanceof Error) {
+        alert(`Error: ${err.message}`);
+      } else {
+        alert("An unexpected error occurred while updating product status.");
+      }
     }
   };
 

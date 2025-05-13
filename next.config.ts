@@ -5,6 +5,12 @@ const nextConfig = {
   images: {
     remotePatterns: [
       {
+        protocol: 'https',
+        hostname: 'drive.google.com',
+        port: '', // Keep empty unless needed
+        pathname: '/file/d/**', // Be more specific if possible, otherwise allow any path
+      },
+      {
         protocol: "https", // Assuming your images from sample.com are served over HTTPS
         hostname: "sample.com",
         // port: '', // Optional: if specific port

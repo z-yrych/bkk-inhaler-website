@@ -53,13 +53,17 @@ const AdminLoginPage: React.FC = () => {
           role: apiUser.role,
         };
 
-        await login(data.token, adminUserData); 
-        
+        await login(data.token, adminUserData);
       } else {
         throw new Error("Login response missing token or user data.");
       }
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred.");
+    } catch (err) {
+      // FIXED: Changed from err: any
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("An unexpected error occurred during login.");
+      }
     } finally {
       setIsSubmitting(false);
     }

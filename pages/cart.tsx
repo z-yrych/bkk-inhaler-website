@@ -2,13 +2,14 @@
 import React, { useState, FormEvent } from "react";
 import Head from "next/head";
 import Link from "next/link";
-import { useRouter } from "next/router";
+// import { useRouter } from "next/router"; // FIXED: Error 30:9 - Removed unused import
 import { useCart } from "@/context/CartContext"; // Or from '@/hooks/useCart'
 import {
   CreateOrderSchema,
   ShippingAddressInput,
 } from "@/lib/validators/orderValidators"; // Adjust path
 import { z } from "zod";
+import NextImage from "next/image"; // Assuming you've aliased this or use 'Image'
 
 type CheckoutFormData = {
   fullName: string;
@@ -16,6 +17,15 @@ type CheckoutFormData = {
   phone: string;
   shippingAddress: ShippingAddressInput;
 };
+
+// Define a type for the expected API response structure for order creation
+interface CreateOrderApiResponse {
+  message?: string;
+  checkoutUrl?: string;
+  errors?: { message: string; path?: (string | number)[] }[];
+  orderId?: string;
+  internalOrderId?: string;
+}
 
 const formatCurrency = (amountInCents: number): string => {
   return new Intl.NumberFormat("en-PH", {
@@ -27,7 +37,7 @@ const formatCurrency = (amountInCents: number): string => {
 const CartPage: React.FC = () => {
   const { cartItems, removeFromCart, updateItemQuantity, getCartTotal } =
     useCart();
-  const router = useRouter(); // Not used in this snippet, but good to have if needed later
+  // const router = useRouter(); // If router is truly not used, it should be removed.
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [formData, setFormData] = useState<CheckoutFormData>({
     fullName: "",
@@ -54,8 +64,8 @@ const CartPage: React.FC = () => {
   const handleProceedToCheckout = () => {
     if (cartItems.length > 0) {
       setIsCheckingOut(true);
-      setCheckoutError(null); // Clear previous checkout errors
-      setFormErrors(null); // Clear previous form errors
+      setCheckoutError(null);
+      setFormErrors(null);
     } else {
       alert("Your cart is empty!");
     }
@@ -81,6 +91,7 @@ const CartPage: React.FC = () => {
 
   const handleSubmitOrder = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    console.log("handleSubmitOrder triggered"); // Log 1: Function start
     setFormErrors(null);
     setCheckoutError(null);
     setIsSubmittingOrder(true);
@@ -92,6 +103,7 @@ const CartPage: React.FC = () => {
         quantity: item.quantity,
       })),
     };
+    console.log("handleSubmitOrder - Order Payload to be sent:", orderPayload); // Log 2: Payload
 
     const customerInfoSchema = CreateOrderSchema.pick({
       fullName: true,
@@ -103,32 +115,67 @@ const CartPage: React.FC = () => {
     const validationResult = customerInfoSchema.safeParse(formData);
 
     if (!validationResult.success) {
+      console.log(
+        "handleSubmitOrder - Client-side Zod validation FAILED:",
+        validationResult.error.issues
+      ); // Log 3a: Zod fail
       setFormErrors(validationResult.error.issues);
       setIsSubmittingOrder(false);
       return;
     }
+    console.log("handleSubmitOrder - Client-side Zod validation PASSED"); // Log 3b: Zod pass
 
     try {
+      console.log("handleSubmitOrder - Attempting fetch to /api/orders"); // Log 4: Before fetch
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderPayload),
       });
+      console.log(
+        "handleSubmitOrder - /api/orders response status:",
+        res.status
+      ); // Log 5: API status
 
-      const data = await res.json();
+      const data: CreateOrderApiResponse = await res.json();
+      console.log("handleSubmitOrder - /api/orders response data:", data); // Log 6: API data
 
       if (!res.ok) {
-        throw new Error(data.message || "Failed to create order.");
+        const errorMsg =
+          data.message ||
+          (data.errors
+            ? data.errors.map((err) => err.message).join(", ")
+            : "Failed to create order.");
+        console.error("handleSubmitOrder - API call not OK:", errorMsg); // Log 7a: API not ok
+        throw new Error(errorMsg);
       }
+      console.log("handleSubmitOrder - API call OK."); // Log 7b: API ok
 
       if (data.checkoutUrl) {
+        console.log(
+          "handleSubmitOrder - Checkout URL received:",
+          data.checkoutUrl,
+          "Redirecting..."
+        ); // Log 8a: URL received
         window.location.href = data.checkoutUrl;
       } else {
+        console.error(
+          "handleSubmitOrder - Checkout URL MISSING from server response. Data:",
+          data
+        ); // Log 8b: URL missing
         throw new Error("Checkout URL not received from server.");
       }
-    } catch (err: any) {
-      setCheckoutError(err.message);
+    } catch (err) {
+      console.error("Error submitting order:", err); // Log 9: Error in try block
+      if (err instanceof Error) {
+        setCheckoutError(err.message);
+      } else {
+        setCheckoutError("An unexpected error occurred during checkout.");
+      }
     } finally {
+      console.log(
+        "handleSubmitOrder - finally block. isSubmittingOrder will be set to false."
+      ); // Log 10: Finally
       setIsSubmittingOrder(false);
     }
   };
@@ -138,8 +185,6 @@ const CartPage: React.FC = () => {
   if (cartItems.length === 0 && !isCheckingOut) {
     return (
       <div className="container mx-auto text-center py-20 px-4 min-h-[calc(100vh-8rem)] flex flex-col justify-center items-center">
-        {" "}
-        {/* Adjust min-height if navbar height changes */}
         <Head>
           <title>Your Shopping Cart - InhalerStore</title>
         </Head>
@@ -161,7 +206,7 @@ const CartPage: React.FC = () => {
           Your Shopping Cart is Empty
         </h1>
         <p className="text-gray-500 mb-8">
-          Looks like you haven't added anything to your cart yet.
+          Looks like you haven&apos;t added anything to your cart yet.
         </p>
         <Link href="/products" legacyBehavior>
           <a className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors text-lg shadow-md">
@@ -174,8 +219,6 @@ const CartPage: React.FC = () => {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans min-h-[calc(100vh-8rem)]">
-      {" "}
-      {/* Adjust min-height if navbar height changes */}
       <Head>
         <title>
           {isCheckingOut ? "Checkout" : "Your Shopping Cart"} - InhalerStore
@@ -192,9 +235,11 @@ const CartPage: React.FC = () => {
                 key={item.product._id}
                 className="flex flex-col sm:flex-row items-center p-4 sm:p-6 gap-4 sm:gap-6 bg-white border border-gray-200 rounded-xl shadow-lg"
               >
-                <img
+                <NextImage
                   src={item.product.images[0] || "/placeholder-image.jpg"}
                   alt={item.product.name}
+                  width={96}
+                  height={96}
                   className="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-lg border border-gray-100"
                 />
                 <div className="flex-grow text-center sm:text-left">
@@ -287,7 +332,8 @@ const CartPage: React.FC = () => {
                 </p>
               )}
             </div>
-
+            {/* ... other form fields for email, phone, and address ... */}
+            {/* Email Input */}
             <div>
               <label
                 htmlFor="email"
@@ -314,6 +360,7 @@ const CartPage: React.FC = () => {
               )}
             </div>
 
+            {/* Phone Input */}
             <div>
               <label
                 htmlFor="phone"
@@ -345,6 +392,7 @@ const CartPage: React.FC = () => {
               Shipping Address
             </h3>
 
+            {/* Street Address Input */}
             <div>
               <label
                 htmlFor="street"
@@ -371,6 +419,7 @@ const CartPage: React.FC = () => {
               )}
             </div>
 
+            {/* Barangay and City/Municipality */}
             <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
               <div>
                 <label
@@ -427,6 +476,7 @@ const CartPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Province and Postal Code */}
             <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
               <div>
                 <label

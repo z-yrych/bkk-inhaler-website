@@ -1,9 +1,13 @@
 // pages/track-order.tsx
-import React, { useState, FormEvent } from 'react';
-import Head from 'next/head';
-import Link from 'next/link';
-// Assuming Navbar is globally available via _app.tsx
-// import Navbar from '@/components/layout/Navbar'; // If not global
+import React, { useState, FormEvent } from "react";
+import Head from "next/head";
+// import Link from 'next/link'; // FIXED: Error 4:8 - Removed unused import
+
+// Define a more specific type for API errors (e.g., Zod issues from backend)
+interface ApiErrorDetail {
+  message: string;
+  path?: (string | number)[];
+}
 
 // Define the structure of the order details we expect from the API for display
 interface TrackedOrderItem {
@@ -21,7 +25,7 @@ interface TrackedOrderShippingInfo {
 
 interface TrackedOrderData {
   orderId: string;
-  status: string; // This will be OrderStatusType
+  status: string; // This will be OrderStatusType if you have it globally
   orderDate: string | Date;
   items: TrackedOrderItem[];
   totalAmount: number; // in cents
@@ -32,39 +36,44 @@ interface TrackedOrderData {
 interface TrackOrderApiResponse {
   message: string;
   order?: TrackedOrderData;
-  errors?: any[]; // For Zod errors from backend if any
+  errors?: ApiErrorDetail[]; // FIXED: Error 96:19 (if it was this line) - More specific type for errors array
 }
 
 const formatCurrency = (amountInCents: number): string => {
-  return new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
   }).format(amountInCents / 100);
 };
 
 const formatDate = (dateString: string | Date | undefined): string => {
-  if (!dateString) return 'N/A';
-  return new Date(dateString).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  if (!dateString) return "N/A";
+  return new Date(dateString).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 };
 
 const formatOrderStatus = (status: string | undefined): string => {
-    if (!status) return 'N/A';
-    return status.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+  if (!status) return "N/A";
+  // Assuming status might be like 'PAYMENT_CONFIRMED'
+  return status
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (char: string) => char.toUpperCase());
 };
 
-
 const TrackOrderPage: React.FC = () => {
-  const [orderIdInput, setOrderIdInput] = useState('');
-  const [emailInput, setEmailInput] = useState('');
+  const [orderIdInput, setOrderIdInput] = useState("");
+  const [emailInput, setEmailInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [trackedOrder, setTrackedOrder] = useState<TrackedOrderData | null>(null);
+  const [trackedOrder, setTrackedOrder] = useState<TrackedOrderData | null>(
+    null
+  );
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -73,10 +82,10 @@ const TrackOrderPage: React.FC = () => {
     setTrackedOrder(null);
 
     try {
-      const res = await fetch('/api/orders/track', {
-        method: 'POST',
+      const res = await fetch("/api/orders/track", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ orderId: orderIdInput, email: emailInput }),
       });
@@ -84,18 +93,26 @@ const TrackOrderPage: React.FC = () => {
       const data: TrackOrderApiResponse = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || `Failed to track order (status: ${res.status})`);
+        const errorMsg =
+          data.message ||
+          data.errors?.[0]?.message ||
+          `Failed to track order (status: ${res.status})`;
+        throw new Error(errorMsg);
       }
 
       if (data.order) {
         setTrackedOrder(data.order);
       } else {
-        // This case might not be hit if API returns 404 with a message for "not found"
-        setError(data.message || 'Order details not found.');
+        setError(data.message || "Order details not found.");
       }
-    } catch (err: any) {
+    } catch (err) {
+      // FIXED: Error 35:12 - Typed err
       console.error("Track order error:", err);
-      setError(err.message || 'An unexpected error occurred.');
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("An unexpected error occurred while tracking the order.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -105,14 +122,19 @@ const TrackOrderPage: React.FC = () => {
     <div className="min-h-[calc(100vh-8rem)] bg-gray-50 font-sans text-gray-800">
       <Head>
         <title>Track Your Order - InhalerStore</title>
-        <meta name="description" content="Check the status of your InhalerStore order." />
+        <meta
+          name="description"
+          content="Check the status of your InhalerStore order."
+        />
       </Head>
 
       {/* Navbar is assumed to be global from _app.tsx */}
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-16">
         <header className="text-center mb-10 sm:mb-12">
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">Track Your Order</h1>
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">
+            Track Your Order
+          </h1>
           <p className="text-md sm:text-lg text-gray-600 mt-2">
             Enter your Order ID and Email to see the latest updates.
           </p>
@@ -121,7 +143,10 @@ const TrackOrderPage: React.FC = () => {
         <div className="max-w-lg mx-auto bg-white p-6 sm:p-8 rounded-xl shadow-xl border border-gray-200">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="orderIdInput" className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                htmlFor="orderIdInput"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
                 Order ID
               </label>
               <input
@@ -135,7 +160,10 @@ const TrackOrderPage: React.FC = () => {
               />
             </div>
             <div>
-              <label htmlFor="emailInput" className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                htmlFor="emailInput"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
                 Email Address
               </label>
               <input
@@ -153,14 +181,16 @@ const TrackOrderPage: React.FC = () => {
               disabled={isLoading}
               className="w-full py-3 px-6 bg-blue-600 text-white font-semibold text-lg rounded-lg hover:bg-blue-700 transition-colors shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60"
             >
-              {isLoading ? 'Tracking...' : 'Track Order'}
+              {isLoading ? "Tracking..." : "Track Order"}
             </button>
           </form>
         </div>
 
         {isLoading && (
           <div className="text-center mt-8">
-            <p className="text-lg text-blue-600 animate-pulse">Looking for your order...</p>
+            <p className="text-lg text-blue-600 animate-pulse">
+              Looking for your order...
+            </p>
           </div>
         )}
 
@@ -178,10 +208,12 @@ const TrackOrderPage: React.FC = () => {
             </h2>
             <div className="space-y-3 text-gray-700">
               <p>
-                <span className="font-medium">Customer:</span> {trackedOrder.customerFirstName || 'Valued Customer'}
+                <span className="font-medium">Customer:</span>{" "}
+                {trackedOrder.customerFirstName || "Valued Customer"}
               </p>
               <p>
-                <span className="font-medium">Order Date:</span> {formatDate(trackedOrder.orderDate)}
+                <span className="font-medium">Order Date:</span>{" "}
+                {formatDate(trackedOrder.orderDate)}
               </p>
               <p>
                 <span className="font-medium">Current Status:</span>
@@ -191,10 +223,19 @@ const TrackOrderPage: React.FC = () => {
               </p>
               {trackedOrder.shippingInfo?.trackingNumber && (
                 <>
-                  <p><span className="font-medium">Courier:</span> {trackedOrder.shippingInfo.courier || 'N/A'}</p>
-                  <p><span className="font-medium">Tracking Number:</span> {trackedOrder.shippingInfo.trackingNumber}</p>
+                  <p>
+                    <span className="font-medium">Courier:</span>{" "}
+                    {trackedOrder.shippingInfo.courier || "N/A"}
+                  </p>
+                  <p>
+                    <span className="font-medium">Tracking Number:</span>{" "}
+                    {trackedOrder.shippingInfo.trackingNumber}
+                  </p>
                   {trackedOrder.shippingInfo.shippedDate && (
-                     <p><span className="font-medium">Shipped Date:</span> {formatDate(trackedOrder.shippingInfo.shippedDate)}</p>
+                    <p>
+                      <span className="font-medium">Shipped Date:</span>{" "}
+                      {formatDate(trackedOrder.shippingInfo.shippedDate)}
+                    </p>
                   )}
                 </>
               )}
@@ -203,7 +244,9 @@ const TrackOrderPage: React.FC = () => {
               <ul className="space-y-2 text-sm">
                 {trackedOrder.items.map((item, index) => (
                   <li key={index} className="flex justify-between items-center">
-                    <span>{item.name} (x{item.quantity})</span>
+                    <span>
+                      {item.name} (x{item.quantity})
+                    </span>
                     {/* Price at purchase not typically shown on public tracking */}
                   </li>
                 ))}
@@ -213,13 +256,16 @@ const TrackOrderPage: React.FC = () => {
               </p>
             </div>
             <p className="text-xs text-gray-500 mt-6 text-center">
-              If you have any questions about your order, please contact support with your Order ID.
+              If you have any questions about your order, please contact support
+              with your Order ID.
             </p>
           </div>
         )}
       </div>
       <footer className="text-center py-8 mt-auto bg-gray-100 border-t">
-        <p className="text-sm text-gray-500">&copy; {new Date().getFullYear()} InhalerStore. All rights reserved.</p>
+        <p className="text-sm text-gray-500">
+          &copy; {new Date().getFullYear()} InhalerStore. All rights reserved.
+        </p>
       </footer>
     </div>
   );

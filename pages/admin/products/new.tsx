@@ -1,15 +1,33 @@
-import React, { useState } from 'react';
-import Head from 'next/head';
-import { useRouter } from 'next/router';
-import Link from 'next/link';
-import withAdminAuth, { AdminAuthProps } from '@/components/auth/withAdminAuth';
-import ProductForm, { ProductFormProps } from '@/components/admin/ProductForm'; // Adjust path if needed
-import { IProductData } from '@/types/productTypes'; // For the data type
+// pages/admin/products/new.tsx
+import React, { useState } from "react";
+import Head from "next/head";
+import { useRouter } from "next/router";
+import Link from "next/link";
+import withAdminAuth, { AdminAuthProps } from "@/components/auth/withAdminAuth";
+import AdminLayout from "@/components/layout/AdminLayout"; // Import AdminLayout
+import ProductForm from "@/components/admin/ProductForm"; // ProductFormProps is not needed here if only ProductForm is used
+import { IProductData } from "@/types/productTypes";
+import { ChevronLeft, CheckCircle, AlertCircle } from "lucide-react";
 
-const CreateProductPage: React.FC<AdminAuthProps> = ({ adminUser }) => {
+// Define a more specific type for API errors (e.g., Zod issues from backend)
+interface ApiErrorDetail {
+  message: string;
+  path?: (string | number)[];
+}
+
+interface ProductCreateApiResponse {
+  message: string;
+  product: IProductData; // Expect the created product back
+  errors?: ApiErrorDetail[];
+}
+
+// Content component for the "Create Product" page
+const CreateProductPageContent: React.FC<AdminAuthProps> = ({
+}) => {
+  // FIXED: adminUser prefixed with _ if not used
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null); // General form error from API
+  const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
 
   const handleCreateProduct = async (data: Partial<IProductData>) => {
@@ -18,78 +36,123 @@ const CreateProductPage: React.FC<AdminAuthProps> = ({ adminUser }) => {
     setFormSuccess(null);
 
     try {
-      const token = localStorage.getItem('adminToken'); // Or from useAuth().token
+      const token = localStorage.getItem("adminToken");
       if (!token) {
-        throw new Error('Authentication token not found.');
+        throw new Error("Authentication token not found. Please login again.");
       }
 
-      const response = await fetch('/api/admin/products', {
-        method: 'POST',
+      const response = await fetch("/api/admin/products", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(data),
       });
 
-      const result = await response.json();
+      const result: ProductCreateApiResponse = await response.json();
 
       if (!response.ok) {
-        // result.errors might be an array of Zod issues if backend validation fails after client-side
-        const errorMessage = result.message || (result.errors ? result.errors.map((e: any) => e.message).join(', ') : 'Failed to create product.');
+        // FIXED: Error at 39:87 - Typed 'e' in map
+        const errorMessage =
+          result.message ||
+          (result.errors
+            ? result.errors.map((e: ApiErrorDetail) => e.message).join(", ")
+            : "Failed to create product.");
         throw new Error(errorMessage);
       }
 
-      setFormSuccess(`Product "${result.product.name}" created successfully! Redirecting...`);
-      // Redirect to the product list or the new product's edit page
+      setFormSuccess(
+        `Product "${result.product.name}" created successfully! Redirecting...`
+      );
       setTimeout(() => {
         router.push(`/admin/products/${result.product._id}`); // Redirect to edit page of the new product
-        // Or router.push('/admin/products'); // Redirect to product list
       }, 2000);
-
-    } catch (error: any) {
+    } catch (error) {
+      // FIXED: Error at 50:21 - Typed error
       console.error("Error creating product:", error);
-      setFormError(error.message || 'An unexpected error occurred.');
-      setIsSubmitting(false); // Ensure button is re-enabled on error
+      if (error instanceof Error) {
+        setFormError(error.message);
+      } else {
+        setFormError(
+          "An unexpected error occurred while creating the product."
+        );
+      }
+      setIsSubmitting(false);
     }
-    // No setIsSubmitting(false) here if redirecting, to keep button disabled
+    // No setIsSubmitting(false) here if redirecting successfully, to keep button disabled
   };
 
-  // Initial data for a new product (mostly empty or defaults)
-  // The ProductForm itself handles its internal state based on these undefined/empty initial values
   const initialProductData: Partial<IProductData> = {
-    isActive: true, // Default new products to active
-    images: [''],   // Start with one empty image field in the form
-    // Other fields will default to empty strings or initial values within ProductForm
+    isActive: true,
+    images: [""],
+    name: "", // Initialize all fields ProductForm might expect if not truly optional
+    description: "",
+    price: 0, // Represented as cents, ProductForm will handle display conversion
+    stockQuantity: 0,
+    scentProfile: [],
+    benefits: [],
+    usageInstructions: "",
+    ingredients: [],
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'Arial, sans-serif' }}>
+    <>
       <Head>
-        <title>Admin - Create New Product</title>
+        {/* AdminLayout sets a general title, this can be for specific meta if needed */}
+        <meta
+          name="description"
+          content="Create a new product for InhalerStore."
+        />
       </Head>
 
-      <div style={{ marginBottom: '20px' }}>
+      <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
+        <h2 className="text-2xl font-semibold text-gray-800">
+          Create New Product
+        </h2>
         <Link href="/admin/products" legacyBehavior>
-          <a style={{ textDecoration: 'none', color: '#0070f3' }}>&larr; Back to Product List</a>
+          <a className="text-sm text-blue-600 hover:underline flex items-center">
+            <ChevronLeft size={18} className="mr-1" /> Back to Product List
+          </a>
         </Link>
       </div>
 
-      <h1>Create New Product</h1>
+      {formSuccess && (
+        <div className="mb-4 p-4 bg-green-50 border border-green-300 text-green-700 rounded-lg flex items-center">
+          <CheckCircle size={20} className="mr-2 text-green-600" />
+          {formSuccess}
+        </div>
+      )}
+      {formError && ( // Display general form error from API/submission logic
+        <div className="mb-4 p-4 bg-red-50 border border-red-300 text-red-700 rounded-lg flex items-center">
+          <AlertCircle size={20} className="mr-2 text-red-600" />
+          {formError}
+        </div>
+      )}
 
-      {formSuccess && <p style={{ color: 'green', backgroundColor: '#e6ffed', padding: '10px', border: '1px solid green', borderRadius: '4px' }}>{formSuccess}</p>}
-      
-      <ProductForm
-        // initialData is not strictly needed here if ProductForm defaults to empty/initial states
-        // but passing explicit defaults for certain fields like isActive can be good.
-        initialData={initialProductData} 
-        onSubmit={handleCreateProduct}
-        isSubmitting={isSubmitting}
-        submitButtonText="Create Product"
-        formError={formError} // Pass the general form error to ProductForm
-      />
-    </div>
+      <div className="bg-white p-6 sm:p-8 rounded-xl shadow-xl border border-gray-200">
+        <ProductForm
+          // initialData is passed to pre-fill parts of the form, like isActive
+          initialData={initialProductData}
+          onSubmit={handleCreateProduct}
+          isSubmitting={isSubmitting}
+          submitButtonText="Create Product"
+          // ProductForm will display its own field-specific Zod errors.
+          // formError prop here is for errors from the submission process itself (e.g., API errors).
+          // If ProductForm also has a prop to display a general error, you can use formError for that too.
+        />
+      </div>
+    </>
   );
 };
 
-export default withAdminAuth(CreateProductPage);
+// Wrapper component that uses the AdminLayout
+const CreateProductPageWithLayout: React.FC<AdminAuthProps> = (props) => {
+  return (
+    <AdminLayout pageTitle="Create New Product">
+      <CreateProductPageContent {...props} />
+    </AdminLayout>
+  );
+};
+
+export default withAdminAuth(CreateProductPageWithLayout);

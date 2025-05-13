@@ -1,7 +1,7 @@
 import { NextApiResponse } from 'next';
 import { ZodError } from 'zod';
 import dbConnect from '@/lib/dbConnect';
-import User, { IUser } from '@/lib/models/User'; // Assuming IUser includes necessary fields
+import User from '@/lib/models/User'; // Assuming IUser includes necessary fields
 import {
   AdminRegistrationSchema,
   AdminRegistrationInput,
@@ -10,6 +10,12 @@ import {
   withAdminAuth,
   NextApiRequestWithAdmin,
 } from '@/lib/middleware/authMiddleware';
+
+interface MongooseDuplicateKeyError extends Error { // Ensure this Error is the built-in Error
+    code?: number;
+    keyPattern?: { [key: string]: number };
+    keyValue?: { [key: string]: unknown };
+}
 
 async function handler(
   req: NextApiRequestWithAdmin,
@@ -68,7 +74,7 @@ async function handler(
             .json({ message: 'Validation failed.', errors: error.errors });
         }
         // Handle Mongoose duplicate key error for email specifically if not caught by findOne
-        if (error instanceof Error && (error as any).code === 11000 && (error as any).keyPattern?.email) {
+        if (error instanceof Error && (error as MongooseDuplicateKeyError).code === 11000 && (error as MongooseDuplicateKeyError).keyPattern?.email) {
             return res.status(409).json({ message: 'Admin user with this email already exists (database constraint).' });
         }
         console.error('Admin User Creation Error:', error);

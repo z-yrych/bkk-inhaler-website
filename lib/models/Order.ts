@@ -1,18 +1,24 @@
 // lib/models/Order.ts
-import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import mongoose, {
+  Schema,
+  Document,
+  Model,
+  Types,
+  ValidatorProps,
+} from "mongoose";
 
 // 1. Readonly tuple for order statuses, ensuring type safety
 export const OrderStatusEnum = [
-  "PENDING_PAYMENT", // Initial state after checkout, before PayMongo confirmation
-  "PAYMENT_FAILED", // If PayMongo reports a failure or user cancels
-  "PAYMENT_CONFIRMED", // PayMongo success webhook received, stock decremented
-  "PROCESSING", // Admin acknowledged, preparing for shipment
-  "SHIPPED_LOCAL", // Shipped within the Philippines / Out for local delivery
-  "DELIVERED", // Customer received
-  "CANCELLED_BY_CUSTOMER", // If customer cancels (feature might be added later)
-  "CANCELLED_BY_ADMIN", // If admin cancels the order
-  "REFUNDED", // If a refund was processed
-  // Optional: "SHIPPED_INTERNATIONAL" if applicable to your store
+  "PENDING_PAYMENT",
+  "PAYMENT_FAILED",
+  "PAYMENT_CONFIRMED",
+  "PROCESSING",
+  "SHIPPED_INTERNATIONAL", // Optional
+  "SHIPPED_LOCAL",
+  "DELIVERED",
+  "CANCELLED_BY_CUSTOMER",
+  "CANCELLED_BY_ADMIN",
+  "REFUNDED",
 ] as const;
 
 // 2. Creates a union type from the OrderStatusEnum values
@@ -20,15 +26,15 @@ export type OrderStatus = (typeof OrderStatusEnum)[number];
 
 // 3. Plain data structure for an order item (used for creation and within IOrder)
 export interface IOrderItemData {
-  productId: Types.ObjectId; // Mongoose will store as ObjectId
-  name: string; // Denormalized product name
+  productId: Types.ObjectId; // Mongoose will store as ObjectId. Or use `Types.ObjectId | IProductData` if it can be populated.
+  name: string;
   priceAtPurchase: number; // In cents
   quantity: number;
-  image?: string; // Denormalized product image URL
+  image?: string;
 }
 
 // 4. Interface for Mongoose subdocument for individual items within an order
-export interface IOrderItem extends Document, IOrderItemData {} // Extends Document and IOrderItemData
+export interface IOrderItem extends Document, IOrderItemData {}
 
 const OrderItemSchema = new Schema<IOrderItem>(
   {
@@ -48,7 +54,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
       min: [0, "Price at purchase cannot be negative."],
       validate: {
         validator: Number.isInteger,
-        message: (props: any) =>
+        message: (props: ValidatorProps) =>
           `${props.value} is not an integer value for priceAtPurchase (cents).`,
       },
     },
@@ -58,7 +64,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
       min: [1, "Quantity must be at least 1."],
       validate: {
         validator: Number.isInteger,
-        message: (props: any) =>
+        message: (props: ValidatorProps) =>
           `${props.value} is not an integer value for quantity.`,
       },
     },
@@ -67,15 +73,15 @@ const OrderItemSchema = new Schema<IOrderItem>(
       trim: true,
     },
   },
-  { _id: false } // No separate _id for these subdocuments
+  { _id: false }
 );
 
 // 5. Main Order interface (Mongoose Document)
 export interface IOrder extends Document {
-  _id: Types.ObjectId; // Explicitly typed _id
-  orderId: string; // Custom human-readable ID
+  _id: Types.ObjectId;
+  orderId: string;
   customerDetails: {
-    [x: string]: any;
+    fullName: string;
     email: string;
     firstName: string;
     lastName: string;
@@ -83,13 +89,12 @@ export interface IOrder extends Document {
     shippingAddress: {
       street: string;
       barangay: string;
-      city: string; // Mongoose schema uses 'city'
+      city: string;
       province: string;
       postalCode: string;
       country: string;
     };
     billingAddress?: {
-      // Optional
       street?: string;
       barangay?: string;
       city?: string;
@@ -98,35 +103,34 @@ export interface IOrder extends Document {
       country?: string;
     };
   };
-  orderItems: Types.DocumentArray<IOrderItem>; // Array of Mongoose subdocuments
-  totalAmount: number; // In cents
+  orderItems: Types.DocumentArray<IOrderItem>;
+  totalAmount: number;
   orderStatus: OrderStatus;
   paymentDetails: {
-    paymongoCheckoutId?: string; // For cs_... (Checkout Session ID)
-    paymongoPaymentIntentId?: string; // For pi_... (Payment Intent ID)
-    paymongoPaymentId?: string; // For pay_... (actual Payment ID from webhook, if different from PI)
-    paymentMethod?: string; // e.g., 'card', 'gcash'
-    paymentDate?: Date; // When payment was confirmed
-    status?: string; // e.g., 'awaiting_payment_gateway', 'paid', 'failed' (your internal payment status)
+    paymongoCheckoutId?: string;
+    paymongoPaymentIntentId?: string;
+    paymongoPaymentId?: string;
+    paymentMethod?: string;
+    paymentDate?: Date;
+    status?: string;
   };
   shippingInfo?: {
     trackingNumber?: string;
     courier?: string;
-    // estimatedDeliveryDate?: Date; // Removed as per earlier MVP decision, can be added back
     shippedDate?: Date;
     deliveredDate?: Date;
   };
   notes?: string;
   adminNotes?: string;
-  createdAt: Date; // Automatically added by Mongoose via timestamps
-  updatedAt: Date; // Automatically added by Mongoose via timestamps
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // 6. Plain data structure for CREATING a new order (for API input)
 export interface OrderCreationAttributes {
   orderId: string;
   customerDetails: {
-    // Matches structure of IOrder.customerDetails
+    // This structure should match IOrder['customerDetails']
     email: string;
     firstName: string;
     lastName: string;
@@ -134,22 +138,22 @@ export interface OrderCreationAttributes {
     shippingAddress: {
       street: string;
       barangay: string;
-      city: string; // Data coming from Zod's 'cityMunicipality' will map to this
+      city: string; // This is what Mongoose schema expects
       province: string;
       postalCode: string;
       country: string;
     };
-    // billingAddress is optional, so not required in creation attributes unless always collected
   };
-  orderItems: IOrderItemData[]; // Uses plain array of plain item data objects
+  orderItems: IOrderItemData[];
   totalAmount: number;
-  orderStatus: OrderStatus; // e.g., 'PENDING_PAYMENT'
-  paymentDetails?: Partial<IOrder["paymentDetails"]>; // Can be initialized as {} or with some defaults
+  orderStatus: OrderStatus;
+  paymentDetails?: Partial<IOrder["paymentDetails"]>;
   notes?: string;
   adminNotes?: string;
-  // createdAt and updatedAt are not part of creation data
 }
 
+// FIXED: Error 151:18 (was 153:18 / 155:18) - Used the correct ESLint rule name in the disable comment
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface IOrderModel extends Model<IOrder> {}
 
 const OrderSchema = new Schema<IOrder, IOrderModel>(
@@ -158,7 +162,6 @@ const OrderSchema = new Schema<IOrder, IOrderModel>(
       type: String,
       required: [true, "Custom Order ID is required."],
       trim: true,
-      // unique constraint handled by index below
     },
     customerDetails: {
       email: {
@@ -187,7 +190,7 @@ const OrderSchema = new Schema<IOrder, IOrderModel>(
       shippingAddress: {
         street: { type: String, required: true, trim: true },
         barangay: { type: String, required: true, trim: true },
-        city: { type: String, required: true, trim: true }, // Named 'city' here
+        city: { type: String, required: true, trim: true },
         province: { type: String, required: true, trim: true },
         postalCode: { type: String, required: true, trim: true },
         country: {
@@ -206,22 +209,22 @@ const OrderSchema = new Schema<IOrder, IOrderModel>(
         country: { type: String, trim: true },
       },
     },
-    orderItems: [OrderItemSchema], // Array of the subdocument schema
+    orderItems: [OrderItemSchema],
     totalAmount: {
       type: Number,
       required: [true, "Total amount is required."],
       min: [0, "Total amount cannot be negative."],
       validate: {
         validator: Number.isInteger,
-        message: (props: any) =>
+        message: (props: ValidatorProps) =>
           `${props.value} is not an integer value for totalAmount (cents).`,
       },
     },
     orderStatus: {
       type: String,
       enum: {
-        values: OrderStatusEnum as unknown as string[], // Keep this cast if OrderStatusEnum is `as const`
-        message: 'Order status "{VALUE}" is not supported.', // <-- CORRECTED: Use a static string with {VALUE}
+        values: OrderStatusEnum as unknown as string[],
+        message: 'Order status "{VALUE}" is not supported.',
       },
       default: "PENDING_PAYMENT",
       required: true,
@@ -244,13 +247,11 @@ const OrderSchema = new Schema<IOrder, IOrderModel>(
     adminNotes: { type: String, trim: true },
   },
   {
-    timestamps: true, // Automatically adds createdAt and updatedAt
+    timestamps: true,
     toJSON: {
-      virtuals: true, // Ensure virtuals like 'id' are included
+      virtuals: true,
       transform: (_doc, ret) => {
-        delete ret.__v; // Remove Mongoose version key
-        // ret.id = ret._id; // Already handled by virtuals: true and default Mongoose behavior
-        // delete ret._id; // Don't delete _id if 'id' virtual relies on it
+        delete ret.__v;
         return ret;
       },
     },
@@ -264,7 +265,6 @@ const OrderSchema = new Schema<IOrder, IOrderModel>(
   }
 );
 
-// Indexing
 OrderSchema.index({ orderId: 1 }, { unique: true });
 OrderSchema.index({ "customerDetails.email": 1 });
 OrderSchema.index({ orderStatus: 1 });

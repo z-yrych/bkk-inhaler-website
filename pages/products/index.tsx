@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import Head from "next/head";
 import Link from "next/link";
+import NextImage from "next/image"; // Changed from Image to NextImage to avoid potential conflicts
 import { IProductData } from "@/types/productTypes"; // Ensure path is correct
 import { useCart } from "@/context/CartContext"; // Ensure path is correct
 
@@ -10,7 +11,8 @@ interface ProductsApiResponse {
   currentPage: number;
   totalPages: number;
   totalProducts: number;
-  // Add other fields if your API returns them
+  message?: string; // Added for consistency with other API responses
+  errors?: { message: string }[]; // For potential API errors
 }
 
 const formatCurrency = (amountInCents: number): string => {
@@ -24,7 +26,7 @@ const ProductsListPage: React.FC = () => {
   const [products, setProducts] = useState<IProductData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // TODO: Add pagination state and handlers if needed for fetching more pages
+  // TODO: Add pagination state (currentPage, totalPages etc.) and handlers if needed
 
   const { addToCart } = useCart();
 
@@ -33,25 +35,31 @@ const ProductsListPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
       try {
-        // Example: fetch first 12 products by default, sorted by creation date
         const res = await fetch(
           "/api/products?limit=12&page=1&sortBy=createdAt&sortOrder=desc"
         );
-        if (!res.ok) {
-          const errData = await res
-            .json()
-            .catch(() => ({
-              message: "Failed to fetch products. Server response not JSON.",
-            }));
-          throw new Error(errData.message || "Failed to fetch products");
-        }
+        // Type the response data
         const data: ProductsApiResponse = await res.json();
+
+        if (!res.ok) {
+          const errorMsg =
+            data.message ||
+            data.errors?.[0]?.message || // Access first error message if array
+            "Failed to fetch products";
+          throw new Error(errorMsg);
+        }
+
         setProducts(data.products || []);
-        // TODO: Set pagination state here if you implement UI controls for it
-      } catch (err: any) {
+        // TODO: Set pagination state here from data (data.currentPage, data.totalPages, etc.)
+      } catch (err) {
+        // FIXED: Error at 51:21 - Typed err
         console.error("Fetch products error:", err);
-        setError(err.message);
-        setProducts([]);
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError("An unexpected error occurred while fetching products.");
+        }
+        setProducts([]); // Clear products on error
       } finally {
         setIsLoading(false);
       }
@@ -62,8 +70,6 @@ const ProductsListPage: React.FC = () => {
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]">
-        {" "}
-        {/* Adjusted for potential navbar height + page padding */}
         <p className="text-xl text-gray-600">Loading products...</p>
       </div>
     );
@@ -83,7 +89,6 @@ const ProductsListPage: React.FC = () => {
   }
 
   return (
-    // The main page container. Navbar padding is handled by <main className="pt-16"> in _app.tsx
     <div className="bg-gray-50 font-sans">
       <Head>
         <title>Our Products - InhalerStore</title>
@@ -93,13 +98,6 @@ const ProductsListPage: React.FC = () => {
         />
       </Head>
 
-      {/* Navbar is now globally in _app.tsx, so remove it from here */}
-      {/*
-      <nav className="bg-white shadow-sm sticky top-0 z-50">
-        ...
-      </nav>
-      */}
-
       <div className="container mx-auto p-4 sm:p-6 lg:p-8">
         <header className="text-center mb-10 pb-6">
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-800">
@@ -108,7 +106,6 @@ const ProductsListPage: React.FC = () => {
           <p className="text-md sm:text-lg text-gray-600 mt-3">
             Discover your perfect scent and embrace tranquility.
           </p>
-          {/* You might move secondary nav/breadcrumbs here if needed, or rely on global Navbar */}
         </header>
 
         {products.length === 0 && !isLoading && (
@@ -126,9 +123,12 @@ const ProductsListPage: React.FC = () => {
               <Link href={`/products/${product.slug}`} legacyBehavior>
                 <a className="block">
                   <div className="w-full h-64 overflow-hidden">
-                    <img
+                    {/* Using NextImage to address the warning */}
+                    <NextImage
                       src={product.images[0] || "/placeholder-image.jpg"}
                       alt={product.name}
+                      width={400} // Provide appropriate width
+                      height={300} // Provide appropriate height
                       className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-300"
                     />
                   </div>
