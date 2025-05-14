@@ -1,4 +1,7 @@
 // next.config.mjs (or .js, or .ts if you are using TypeScript for your Next.js config)
+
+import { hostname } from "os";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true, // Or your existing reactStrictMode setting
@@ -28,6 +31,10 @@ const nextConfig = {
         protocol: "https",
         hostname: "ph.pinterest.com",
       },
+      {
+        protocol: 'https',
+        hostname: 'm.media-amazon.com',
+      }
     ],
     // If you were using the older 'domains' configuration (less common now, remotePatterns is preferred):
     // domains: ['sample.com', 'example.com', 'your-cdn-provider.com'],
